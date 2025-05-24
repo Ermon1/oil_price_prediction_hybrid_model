@@ -43,7 +43,7 @@ class OilPreprocessor:
             # Rename Close_Last to Close/Last if needed
             if 'Close_Last' in df.columns:
                 df = df.rename(columns={'Close_Last': 'Close/Last'})
-            
+                
             return df
             
         except Exception as e:
@@ -80,10 +80,16 @@ class OilPreprocessor:
     def _calculate_rsi(self, prices: pd.Series, period: int = 14) -> pd.Series:
         """Calculate RSI technical indicator"""
         delta = prices.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-        rs = gain / loss
-        return 100 - (100 / (1 + rs))
+        gain = (delta.where(delta > 0, 0)).rolling(window=period, min_periods=1).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period, min_periods=1).mean()
+        
+        # Handle division by zero
+        rs = gain / loss.replace(0, np.inf)
+        rsi = 100 - (100 / (1 + rs))
+        
+        # Fill any remaining NaN values
+        rsi = rsi.fillna(50)  # Default to neutral RSI value
+        return rsi
 
     def _calculate_macd(self, prices: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.Series:
         """Calculate MACD technical indicator"""
@@ -111,6 +117,7 @@ class OilPreprocessor:
             
             # Fill any remaining NaN values with forward fill
             df = df.fillna(method='ffill')
+            df = df.fillna(method='bfill')  # Backward fill for any remaining NaNs
             
             if df.empty:
                 raise ValueError("No valid data after processing")
@@ -179,7 +186,7 @@ class OilPreprocessor:
             # Select features in the correct order
             df = df[required_features]
         
-            # Final cleaning
+        # Final cleaning
             df = df.ffill().bfill()
             
             return df
